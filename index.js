@@ -1,10 +1,12 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const CalorieLog = require('./models/CalorieLog');
+const ExerciseLog = require('./models/ExerciseLog');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 require('dotenv').config();
 const User = require('./models/User');
+const commonFoods = require('./data/commonFoods');
 
 const app = express();
 app.use(cors());
@@ -30,16 +32,13 @@ app.post('/api/signup', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Check karein user pehle se to nahi bana hua
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists with this email' });
     }
 
-    // Password ko hash (secure) karna
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Naya user banana
     const newUser = new User({
       name,
       email,
@@ -53,18 +52,17 @@ app.post('/api/signup', async (req, res) => {
     res.status(500).json({ message: 'Something went wrong', error: error.message });
   }
 });
+
 // Login route
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check karein user exist karta hai ya nahi
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ message: 'Invalid email or password' });
     }
 
-    // Password compare karna (hashed password se)
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid email or password' });
@@ -75,7 +73,9 @@ app.post('/api/login', async (req, res) => {
     res.status(500).json({ message: 'Something went wrong', error: error.message });
   }
 });
-// Calorie add karne ka route
+
+// ---- Calorie routes ----
+
 app.post('/api/calories', async (req, res) => {
   try {
     const { userId, foodName, calories } = req.body;
@@ -94,7 +94,6 @@ app.post('/api/calories', async (req, res) => {
   }
 });
 
-// Ek user ki saari calorie entries dekhne ka route
 app.get('/api/calories/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -106,6 +105,56 @@ app.get('/api/calories/:userId', async (req, res) => {
     res.status(500).json({ message: 'Something went wrong', error: error.message });
   }
 });
+
+// ---- Exercise routes ----
+
+app.post('/api/exercises', async (req, res) => {
+  try {
+    const { userId, exerciseName, duration, caloriesBurned } = req.body;
+
+    const newLog = new ExerciseLog({
+      userId,
+      exerciseName,
+      duration,
+      caloriesBurned
+    });
+
+    await newLog.save();
+
+    res.status(201).json({ message: 'Exercise entry added!', log: newLog });
+  } catch (error) {
+    res.status(500).json({ message: 'Something went wrong', error: error.message });
+  }
+});
+
+app.get('/api/exercises/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const logs = await ExerciseLog.find({ userId }).sort({ date: -1 });
+
+    res.status(200).json({ logs });
+  } catch (error) {
+    res.status(500).json({ message: 'Something went wrong', error: error.message });
+  }
+});
+
+// ---- Food search route (autocomplete) ----
+
+app.get('/api/foods/search', (req, res) => {
+  const query = (req.query.q || '').toLowerCase().trim();
+
+  if (!query) {
+    return res.status(200).json({ results: [] });
+  }
+
+  const results = commonFoods
+    .filter((food) => food.name.toLowerCase().includes(query))
+    .slice(0, 8);
+
+  res.status(200).json({ results });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
